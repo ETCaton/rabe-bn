@@ -2,7 +2,7 @@ use rand::Rng;
 use std::ops::{Add, Sub, Mul, Neg};
 use super::FieldElement;
 
-use arith::{U512, U256};
+use crate::arith::{U512, U256};
 use core::fmt;
 #[cfg(feature = "borsh")]
 use borsh::{BorshSerialize, BorshDeserialize};

@@ -3,7 +3,7 @@ mod fq2;
 mod fq6;
 mod fq12;
 
-use arith::U256;
+use crate::arith::U256;
 use rand::Rng;
 use std::ops::{Add, Sub, Mul, Neg};
 use std::fmt::Debug;

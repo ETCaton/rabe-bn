@@ -1,14 +1,14 @@
 [package]
 name = "rabe-bn"
 version = "0.4.23"
+edition = "2015"
 authors = [
-    "Sean Bowe <ewillbefull@gmail.com>",
-    "Bramm, Georg <georg.bramm@aisec.fraunhofer.de>"
+  "Sean Bowe <ewillbefull@gmail.com>",
+  "Bramm, Georg <georg.bramm@aisec.fraunhofer.de>",
 ]
 description = "Pairing cryptography with the Barreto-Naehrig curve. Update to use latest rand and serde crates."
-keywords = ["pairing","crypto","cryptography"]
+keywords = ["pairing", "crypto", "cryptography"]
 readme = "README.md"
-homepage = "https://github.com/georgbramm/rabe-bn"
 repository = "https://github.com/georgbramm/rabe-bn"
 documentation = "https://docs.rs/rabe-bn"
 license = "MIT OR Apache-2.0"
@@ -18,9 +18,6 @@ exclude = ["rabe-bn.iml", "/.idea"]
 default = ["serde"]
 borsh = ["borsh/derive"]
 serde = ["serde/derive"]
-
-[[bench]]
-name = "api"
 
 [dependencies]
 borsh = { version = "1.5.0", optional = true, default-features = false }

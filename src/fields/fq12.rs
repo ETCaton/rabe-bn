@@ -1,7 +1,7 @@
-use fields::{FieldElement, Fq2, Fq, Fq6, const_fq};
+use crate::fields::{FieldElement, Fq2, Fq, Fq6, const_fq};
 use std::ops::{Add, Sub, Mul, Neg};
 use rand::Rng;
-use arith::U256;
+use crate::arith::U256;
 use core::fmt;
 #[cfg(feature = "borsh")]
 use borsh::{BorshSerialize, BorshDeserialize};

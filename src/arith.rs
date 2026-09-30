@@ -341,7 +341,7 @@ impl U256 {
 
     /// Return an Iterator<Item=bool> over all bits from
     /// MSB to LSB.
-    pub fn bits(&self) -> BitIterator {
+    pub fn bits(&self) -> BitIterator<'_> {
         BitIterator { int: &self, n: 256 }
     }
 }

@@ -13,8 +13,8 @@ pub mod arith;
 mod fields;
 mod groups;
 
-use fields::FieldElement;
-use groups::GroupElement;
+use crate::fields::FieldElement;
+use crate::groups::GroupElement;
 use std::{
     fmt::{
         Debug,

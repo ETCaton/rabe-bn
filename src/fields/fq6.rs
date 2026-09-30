@@ -1,4 +1,4 @@
-use fields::{FieldElement, Fq, Fq2, const_fq};
+use crate::fields::{FieldElement, Fq, Fq2, const_fq};
 use std::ops::{Add, Sub, Mul, Neg};
 use rand::Rng;
 use core::fmt;

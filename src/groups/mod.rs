@@ -1,6 +1,6 @@
 use std::ops::{Add, Sub, Neg, Mul};
-use fields::{FieldElement, Fq, Fq2, Fq12, Fr, const_fq, fq2_nonresidue};
-use arith::U256;
+use crate::fields::{FieldElement, Fq, Fq2, Fq12, Fr, const_fq, fq2_nonresidue};
+use crate::arith::U256;
 use std::fmt;
 use rand::Rng;
 #[cfg(feature = "borsh")]
@@ -590,7 +590,7 @@ impl G2Precomp {
 
 #[test]
 fn test_miller_loop() {
-    use fields::Fq6;
+    use crate::fields::Fq6;
 
     let g1 = G1::one() *
         Fr::from_str(
@@ -856,7 +856,7 @@ pub fn pairing(p: &G1, q: &G2) -> Fq12 {
 
 #[test]
 fn test_reduced_pairing() {
-    use fields::Fq6;
+    use crate::fields::Fq6;
 
     let g1 = G1::one() *
         Fr::from_str(
