@@ -1,13 +1,13 @@
-use rand::Rng;
-use std::ops::{Add, Sub, Mul, Neg};
 use super::FieldElement;
+use rand::Rng;
+use std::ops::{Add, Mul, Neg, Sub};
 
-use crate::arith::{U512, U256};
-use core::fmt;
+use crate::arith::{U256, U512};
 #[cfg(feature = "borsh")]
-use borsh::{BorshSerialize, BorshDeserialize};
+use borsh::{BorshDeserialize, BorshSerialize};
+use core::fmt;
 #[cfg(feature = "serde")]
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 macro_rules! field_impl {
     ($name:ident, $modulus:expr_2021, $rsquared:expr_2021, $rcubed:expr_2021, $one:expr_2021, $inv:expr_2021) => {
@@ -21,12 +21,12 @@ macro_rules! field_impl {
             #[inline]
             fn from(mut a: $name) -> Self {
                 a.0.mul(&U256::one(), &U256($modulus), $inv);
-                
+
                 a.0
             }
         }
 
-		/*
+        /*
         impl Encodable for $name {
             fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
                 let normalized = U256::from(*self);
@@ -40,14 +40,20 @@ macro_rules! field_impl {
                 $name::new(try!(U256::decode(s))).ok_or_else(|| s.error("integer is not less than modulus"))
             }
         }
-        
+
         */
-		
+
         impl $name {
             pub fn from_str(s: &str) -> Option<Self> {
                 let ints: Vec<_> = {
                     let mut acc = Self::zero();
-                    (0..11).map(|_| {let tmp = acc; acc = acc + Self::one(); tmp}).collect()
+                    (0..11)
+                        .map(|_| {
+                            let tmp = acc;
+                            acc = acc + Self::one();
+                            tmp
+                        })
+                        .collect()
                 };
 
                 let mut res = Self::zero();
@@ -56,7 +62,7 @@ macro_rules! field_impl {
                         Some(d) => {
                             res = res * ints[10];
                             res = res + ints[d as usize];
-                        },
+                        }
                         None => {
                             return None;
                         }
@@ -104,7 +110,7 @@ macro_rules! field_impl {
             fn one() -> Self {
                 $name(U256($one))
             }
-            
+
             fn random<R: Rng + ?Sized>(rng: &mut R) -> Self {
                 $name(U256::random(rng, &U256($modulus)))
             }
@@ -180,8 +186,7 @@ macro_rules! field_impl {
                 write!(f, "{}", self.0)
             }
         }
-
-    }
+    };
 }
 
 field_impl!(

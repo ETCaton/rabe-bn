@@ -4,13 +4,13 @@
 extern crate rabe_bn;
 extern crate rand;
 
-use rand::Rng;
 use rabe_bn::Gt;
+use rand::Rng;
 
 fn main() {
     let mut rng = rand::thread_rng();
 
     // Construct private keys
-    let alice_sk:Gt = rng.r#gen();
+    let alice_sk: Gt = rng.r#gen();
     println!("alice_sk: {}", alice_sk)
 }

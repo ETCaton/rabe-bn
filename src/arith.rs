@@ -1,12 +1,12 @@
-use std::cmp::Ordering;
-use rand::Rng;
-use core::fmt;
-use byteorder::{ByteOrder, BigEndian, WriteBytesExt};
-use std::iter::FromIterator;
 #[cfg(feature = "borsh")]
-use borsh::{BorshSerialize, BorshDeserialize};
+use borsh::{BorshDeserialize, BorshSerialize};
+use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
+use core::fmt;
+use rand::Rng;
 #[cfg(feature = "serde")]
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
+use std::iter::FromIterator;
 
 /// 256-bit, stack allocated biginteger for use in prime field
 /// arithmetic.
@@ -121,7 +121,7 @@ impl fmt::Display for U512 {
 }
 
 impl FromIterator<u64> for U512 {
-    fn from_iter<I: IntoIterator<Item=u64>>(iter: I) -> Self {
+    fn from_iter<I: IntoIterator<Item = u64>>(iter: I) -> Self {
         let mut barry: Vec<u8> = Vec::new();
         for word in iter {
             for v in word.to_le_bytes() {
@@ -157,7 +157,7 @@ impl Ord for U256 {
             }
         }
 
-        return Ordering::Equal;
+        Ordering::Equal
     }
 }
 
@@ -342,7 +342,7 @@ impl U256 {
     /// Return an Iterator<Item=bool> over all bits from
     /// MSB to LSB.
     pub fn bits(&self) -> BitIterator<'_> {
-        BitIterator { int: &self, n: 256 }
+        BitIterator { int: self, n: 256 }
     }
 }
 
@@ -369,7 +369,7 @@ impl<'a> Iterator for BitIterator<'a> {
 #[inline]
 fn div2(a: &mut [u64; 4]) {
     let mut t = a[3] << 63;
-    a[3] = a[3] >> 1;
+    a[3] >>= 1;
     let b = a[2] << 63;
     a[2] >>= 1;
     a[2] |= t;
@@ -417,7 +417,7 @@ fn adc(a: u64, b: u64, carry: &mut u64) -> u64 {
 fn add_nocarry(a: &mut [u64; 4], b: &[u64; 4]) {
     let mut carry = 0;
 
-    for (a, b) in a.into_iter().zip(b.iter()) {
+    for (a, b) in a.iter_mut().zip(b.iter()) {
         *a = adc(*a, *b, &mut carry);
     }
 
@@ -440,7 +440,7 @@ fn sub_noborrow(a: &mut [u64; 4], b: &[u64; 4]) {
 
     let mut borrow = 0;
 
-    for (a, b) in a.into_iter().zip(b.iter()) {
+    for (a, b) in a.iter_mut().zip(b.iter()) {
         *a = sbb(*a, *b, &mut borrow);
     }
 
@@ -522,14 +522,12 @@ fn setting_bits() {
 fn testing_divrem() {
     let rng = &mut ::rand::thread_rng();
 
-    let modulo = U256(
-        [
-            0x3c208c16d87cfd47,
-            0x97816a916871ca8d,
-            0xb85045b68181585d,
-            0x30644e72e131a029,
-        ],
-    );
+    let modulo = U256([
+        0x3c208c16d87cfd47,
+        0x97816a916871ca8d,
+        0xb85045b68181585d,
+        0x30644e72e131a029,
+    ]);
 
     for _ in 0..100 {
         let c0 = U256::random(rng, &modulo);
@@ -545,18 +543,16 @@ fn testing_divrem() {
 
     {
         // Modulus should become 1*q + 0
-        let a = U512(
-            [
-                0x3c208c16d87cfd47,
-                0x97816a916871ca8d,
-                0xb85045b68181585d,
-                0x30644e72e131a029,
-                0,
-                0,
-                0,
-                0,
-            ],
-        );
+        let a = U512([
+            0x3c208c16d87cfd47,
+            0x97816a916871ca8d,
+            0xb85045b68181585d,
+            0x30644e72e131a029,
+            0,
+            0,
+            0,
+            0,
+        ]);
 
         let (c1, c0) = a.divrem(&modulo);
         assert_eq!(c1.unwrap(), U256::one());
@@ -565,129 +561,111 @@ fn testing_divrem() {
 
     {
         // Modulus squared minus 1 should be (q-1) q + q-1
-        let a = U512(
-            [
-                0x3b5458a2275d69b0,
-                0xa602072d09eac101,
-                0x4a50189c6d96cadc,
-                0x04689e957a1242c8,
-                0x26edfa5c34c6b38d,
-                0xb00b855116375606,
-                0x599a6f7c0348d21c,
-                0x0925c4b8763cbf9c,
-            ],
-        );
+        let a = U512([
+            0x3b5458a2275d69b0,
+            0xa602072d09eac101,
+            0x4a50189c6d96cadc,
+            0x04689e957a1242c8,
+            0x26edfa5c34c6b38d,
+            0xb00b855116375606,
+            0x599a6f7c0348d21c,
+            0x0925c4b8763cbf9c,
+        ]);
 
         let (c1, c0) = a.divrem(&modulo);
         assert_eq!(
             c1.unwrap(),
-            U256(
-                [
-                    0x3c208c16d87cfd46,
-                    0x97816a916871ca8d,
-                    0xb85045b68181585d,
-                    0x30644e72e131a029,
-                ],
-            )
+            U256([
+                0x3c208c16d87cfd46,
+                0x97816a916871ca8d,
+                0xb85045b68181585d,
+                0x30644e72e131a029,
+            ],)
         );
         assert_eq!(
             c0,
-            U256(
-                [
-                    0x3c208c16d87cfd46,
-                    0x97816a916871ca8d,
-                    0xb85045b68181585d,
-                    0x30644e72e131a029,
-                ],
-            )
+            U256([
+                0x3c208c16d87cfd46,
+                0x97816a916871ca8d,
+                0xb85045b68181585d,
+                0x30644e72e131a029,
+            ],)
         );
     }
 
     {
         // Modulus squared minus 2 should be (q-1) q + q-2
-        let a = U512(
-            [
-                0x3b5458a2275d69af,
-                0xa602072d09eac101,
-                0x4a50189c6d96cadc,
-                0x04689e957a1242c8,
-                0x26edfa5c34c6b38d,
-                0xb00b855116375606,
-                0x599a6f7c0348d21c,
-                0x0925c4b8763cbf9c,
-            ],
-        );
+        let a = U512([
+            0x3b5458a2275d69af,
+            0xa602072d09eac101,
+            0x4a50189c6d96cadc,
+            0x04689e957a1242c8,
+            0x26edfa5c34c6b38d,
+            0xb00b855116375606,
+            0x599a6f7c0348d21c,
+            0x0925c4b8763cbf9c,
+        ]);
 
         let (c1, c0) = a.divrem(&modulo);
 
         assert_eq!(
             c1.unwrap(),
-            U256(
-                [
-                    0x3c208c16d87cfd46,
-                    0x97816a916871ca8d,
-                    0xb85045b68181585d,
-                    0x30644e72e131a029,
-                ],
-            )
+            U256([
+                0x3c208c16d87cfd46,
+                0x97816a916871ca8d,
+                0xb85045b68181585d,
+                0x30644e72e131a029,
+            ],)
         );
         assert_eq!(
             c0,
-            U256(
-                [
-                    0x3c208c16d87cfd45,
-                    0x97816a916871ca8d,
-                    0xb85045b68181585d,
-                    0x30644e72e131a029,
-                ],
-            )
+            U256([
+                0x3c208c16d87cfd45,
+                0x97816a916871ca8d,
+                0xb85045b68181585d,
+                0x30644e72e131a029,
+            ],)
         );
     }
 
     {
         // Ridiculously large number should fail
-        let a = U512(
-            [
-                0xffffffffffffffff,
-                0xffffffffffffffff,
-                0xffffffffffffffff,
-                0xffffffffffffffff,
-                0xffffffffffffffff,
-                0xffffffffffffffff,
-                0xffffffffffffffff,
-                0xffffffffffffffff,
-            ],
-        );
+        let a = U512([
+            0xffffffffffffffff,
+            0xffffffffffffffff,
+            0xffffffffffffffff,
+            0xffffffffffffffff,
+            0xffffffffffffffff,
+            0xffffffffffffffff,
+            0xffffffffffffffff,
+            0xffffffffffffffff,
+        ]);
 
         let (c1, c0) = a.divrem(&modulo);
         assert!(c1.is_none());
         assert_eq!(
             c0,
-            U256(
-                [
-                    0xf32cfc5b538afa88,
-                    0xb5e71911d44501fb,
-                    0x47ab1eff0a417ff6,
-                    0x06d89f71cab8351f,
-                ],
-            )
+            U256([
+                0xf32cfc5b538afa88,
+                0xb5e71911d44501fb,
+                0x47ab1eff0a417ff6,
+                0x06d89f71cab8351f,
+            ],)
         );
     }
 
     {
         // Modulus squared should fail
-        let a = U512(
-            [
-                0x3b5458a2275d69b1,
-                0xa602072d09eac101,
-                0x4a50189c6d96cadc,
-                0x04689e957a1242c8,
-                0x26edfa5c34c6b38d,
-                0xb00b855116375606,
-                0x599a6f7c0348d21c,
-                0x0925c4b8763cbf9c,
-            ],
-        );
+        let a = U512([
+            0x3b5458a2275d69b1,
+            0xa602072d09eac101,
+            0x4a50189c6d96cadc,
+            0x04689e957a1242c8,
+            0x26edfa5c34c6b38d,
+            0xb00b855116375606,
+            0x599a6f7c0348d21c,
+            0x0925c4b8763cbf9c,
+        ]);
 
         let (c1, c0) = a.divrem(&modulo);
         assert!(c1.is_none());
@@ -696,18 +674,16 @@ fn testing_divrem() {
 
     {
         // Modulus squared plus one should fail
-        let a = U512(
-            [
-                0x3b5458a2275d69b2,
-                0xa602072d09eac101,
-                0x4a50189c6d96cadc,
-                0x04689e957a1242c8,
-                0x26edfa5c34c6b38d,
-                0xb00b855116375606,
-                0x599a6f7c0348d21c,
-                0x0925c4b8763cbf9c,
-            ],
-        );
+        let a = U512([
+            0x3b5458a2275d69b2,
+            0xa602072d09eac101,
+            0x4a50189c6d96cadc,
+            0x04689e957a1242c8,
+            0x26edfa5c34c6b38d,
+            0xb00b855116375606,
+            0x599a6f7c0348d21c,
+            0x0925c4b8763cbf9c,
+        ]);
 
         let (c1, c0) = a.divrem(&modulo);
         assert!(c1.is_none());
@@ -715,28 +691,24 @@ fn testing_divrem() {
     }
 
     {
-        let modulo = U256(
-            [
-                0x43e1f593f0000001,
-                0x2833e84879b97091,
-                0xb85045b68181585d,
-                0x30644e72e131a029,
-            ],
-        );
+        let modulo = U256([
+            0x43e1f593f0000001,
+            0x2833e84879b97091,
+            0xb85045b68181585d,
+            0x30644e72e131a029,
+        ]);
 
         // Fr modulus masked off is valid
-        let a = U512(
-            [
-                0xffffffffffffffff,
-                0xffffffffffffffff,
-                0xffffffffffffffff,
-                0xffffffffffffffff,
-                0xffffffffffffffff,
-                0xffffffffffffffff,
-                0xffffffffffffffff,
-                0x07ffffffffffffff,
-            ],
-        );
+        let a = U512([
+            0xffffffffffffffff,
+            0xffffffffffffffff,
+            0xffffffffffffffff,
+            0xffffffffffffffff,
+            0xffffffffffffffff,
+            0xffffffffffffffff,
+            0xffffffffffffffff,
+            0x07ffffffffffffff,
+        ]);
 
         let (c1, c0) = a.divrem(&modulo);
 

@@ -4,16 +4,16 @@
 extern crate rabe_bn;
 extern crate rand;
 
-use rabe_bn::{Group, Fr, G1};
+use rabe_bn::{Fr, G1, Group};
 use rand::Rng;
 
 fn main() {
     let mut rng = rand::thread_rng();
 
     // Construct private keys
-    let alice_sk:Fr = rng.r#gen();
-    let bob_sk:Fr = rng.r#gen();
-    let carol_sk:Fr = rng.r#gen();
+    let alice_sk: Fr = rng.r#gen();
+    let bob_sk: Fr = rng.r#gen();
+    let carol_sk: Fr = rng.r#gen();
 
     // Construct public keys
     let alice_pk = G1::one() * alice_sk;

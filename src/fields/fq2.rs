@@ -1,45 +1,39 @@
-use crate::fields::{FieldElement, const_fq, Fq};
-use std::ops::{Add, Sub, Mul, Neg};
-use rand::Rng;
-use core::fmt;
+use crate::fields::{FieldElement, Fq, const_fq};
 #[cfg(feature = "borsh")]
-use borsh::{BorshSerialize, BorshDeserialize};
+use borsh::{BorshDeserialize, BorshSerialize};
+use core::fmt;
+use rand::Rng;
 #[cfg(feature = "serde")]
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+use std::ops::{Add, Mul, Neg, Sub};
 
 #[inline]
 fn fq_non_residue() -> Fq {
     // (q - 1) is a quadratic nonresidue in Fq
     // 21888242871839275222246405745257275088696311157297823662689037894645226208582
-    const_fq(
-        [
-            0x68c3488912edefaa,
-            0x8d087f6872aabf4f,
-            0x51e1a24709081231,
-            0x2259d6b14729c0fa,
-        ],
-    )
+    const_fq([
+        0x68c3488912edefaa,
+        0x8d087f6872aabf4f,
+        0x51e1a24709081231,
+        0x2259d6b14729c0fa,
+    ])
 }
 
 #[inline]
 pub fn fq2_nonresidue() -> Fq2 {
     Fq2::new(
-        const_fq(
-            [
-                0xf60647ce410d7ff7,
-                0x2f3d6f4dd31bd011,
-                0x2943337e3940c6d1,
-                0x1d9598e8a7e39857,
-            ],
-        ),
-        const_fq(
-            [
-                0xd35d438dc58f0d9d,
-                0x0a78eb28f5c70b3d,
-                0x666ea36f7879462c,
-                0x0e0a77c19a07df2f,
-            ],
-        ),
+        const_fq([
+            0xf60647ce410d7ff7,
+            0x2f3d6f4dd31bd011,
+            0x2943337e3940c6d1,
+            0x1d9598e8a7e39857,
+        ]),
+        const_fq([
+            0xd35d438dc58f0d9d,
+            0x0a78eb28f5c70b3d,
+            0x666ea36f7879462c,
+            0x0e0a77c19a07df2f,
+        ]),
     )
 }
 
@@ -75,7 +69,7 @@ impl Decodable for Fq2 {
 */
 impl Fq2 {
     pub fn new(c0: Fq, c1: Fq) -> Self {
-        Fq2 { c0: c0, c1: c1 }
+        Fq2 { c0, c1 }
     }
 
     pub fn scale(&self, by: Fq) -> Self {
@@ -90,7 +84,7 @@ impl Fq2 {
     }
 
     pub fn frobenius_map(&self, power: usize) -> Self {
-        if power % 2 == 0 {
+        if power.is_multiple_of(2) {
             *self
         } else {
             Fq2 {
@@ -135,8 +129,9 @@ impl FieldElement for Fq2 {
         let ab = self.c0 * self.c1;
 
         Fq2 {
-            c0: (self.c1 * fq_non_residue() + self.c0) * (self.c0 + self.c1) - ab -
-                ab * fq_non_residue(),
+            c0: (self.c1 * fq_non_residue() + self.c0) * (self.c0 + self.c1)
+                - ab
+                - ab * fq_non_residue(),
             c1: ab + ab,
         }
     }
@@ -144,21 +139,16 @@ impl FieldElement for Fq2 {
     fn inverse(self) -> Option<Self> {
         // "High-Speed Software Implementation of the Optimal Ate Pairing
         // over Barreto–Naehrig Curves"; Algorithm 8
-
-        match (self.c0.squared() - (self.c1.squared() * fq_non_residue())).inverse() {
-            Some(t) => Some(Fq2 {
+        (self.c0.squared() - (self.c1.squared() * fq_non_residue()))
+            .inverse()
+            .map(|t| Fq2 {
                 c0: self.c0 * t,
                 c1: -(self.c1 * t),
-            }),
-            None => None,
-        }
+            })
     }
 
     fn into_bytes(self) -> Vec<u8> {
-        [
-            self.c0.into_bytes(),
-            self.c1.into_bytes()
-        ].concat()
+        [self.c0.into_bytes(), self.c1.into_bytes()].concat()
     }
 }
 

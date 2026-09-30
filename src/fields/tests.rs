@@ -1,7 +1,7 @@
-use rand::Rng;
-use rand::rngs::StdRng;
-use rand::SeedableRng;
 use super::FieldElement;
+use rand::Rng;
+use rand::SeedableRng;
+use rand::rngs::StdRng;
 use std::time::SystemTime;
 
 fn can_invert<F: FieldElement>() {
@@ -30,10 +30,7 @@ fn rand_element_eval<F: FieldElement, R: Rng>(rng: &mut R) {
         let c = F::random(rng);
         let d = F::random(rng);
 
-        assert_eq!(
-            (a + b) * (c + d),
-            (a * c) + (b * c) + (a * d) + (b * d)
-        );
+        assert_eq!((a + b) * (c + d), (a * c) + (b * c) + (a * d) + (b * d));
     }
 }
 
