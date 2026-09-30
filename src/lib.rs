@@ -130,14 +130,14 @@ impl Mul for Fr {
 
 impl Distribution<crate::fields::Fr> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> crate::fields::Fr {
-        let random_bytes: Vec<u8> = (0..64).map(|_| { rng.gen::<u8>() }).collect();
+        let random_bytes: Vec<u8> = (0..64).map(|_| { rng.r#gen::<u8>() }).collect();
         crate::fields::Fr::interpret(&pop(random_bytes.as_ref()))
     }
 }
 
 impl Distribution<Fr> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Fr {
-        let random_bytes: Vec<u8> = (0..64).map(|_| { rng.gen::<u8>() }).collect();
+        let random_bytes: Vec<u8> = (0..64).map(|_| { rng.r#gen::<u8>() }).collect();
         Fr::interpret(&pop(random_bytes.as_ref()))
     }
 }

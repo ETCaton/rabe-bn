@@ -10,7 +10,7 @@ use borsh::{BorshSerialize, BorshDeserialize};
 use serde::{Serialize, Deserialize};
 
 macro_rules! field_impl {
-    ($name:ident, $modulus:expr, $rsquared:expr, $rcubed:expr, $one:expr, $inv:expr) => {
+    ($name:ident, $modulus:expr_2021, $rsquared:expr_2021, $rcubed:expr_2021, $one:expr_2021, $inv:expr_2021) => {
         #[derive(Copy, Clone, PartialEq, Eq, Debug)]
         #[cfg_attr(feature = "borsh", derive(BorshSerialize, BorshDeserialize))]
         #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]

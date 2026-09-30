@@ -1,7 +1,7 @@
 [package]
 name = "rabe-bn"
 version = "0.4.23"
-edition = "2015"
+edition = "2024"
 authors = [
   "Sean Bowe <ewillbefull@gmail.com>",
   "Bramm, Georg <georg.bramm@aisec.fraunhofer.de>",

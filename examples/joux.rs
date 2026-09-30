@@ -7,9 +7,9 @@ fn main() {
     let mut rng = rand::thread_rng();
 
     // Generate private keys
-    let alice_sk:Fr = rng.gen();
-    let bob_sk:Fr = rng.gen();
-    let carol_sk:Fr = rng.gen();
+    let alice_sk:Fr = rng.r#gen();
+    let bob_sk:Fr = rng.r#gen();
+    let carol_sk:Fr = rng.r#gen();
 
     // Generate public keys in G1 and G2
     let (alice_pk1, alice_pk2) = (G1::one() * alice_sk, G2::one() * alice_sk);

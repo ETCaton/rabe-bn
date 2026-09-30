@@ -60,7 +60,7 @@ impl U512 {
 
     /// Get a random U512
     pub fn random<R: Rng + ?Sized>(rng: &mut R) -> U512 {
-        U512(rng.gen())
+        U512(rng.r#gen())
     }
 
     pub fn get_bit(&self, n: usize) -> Option<bool> {
