@@ -485,7 +485,6 @@ fn mac_digit(acc: &mut [u64], b: &[u64], c: u64) {
     debug_assert!(carry == 0);
 }
 
-#[inline]
 fn mul_reduce(this: &mut [u64; 4], by: &[u64; 4], modulus: &[u64; 4], inv: u64) {
     // The Montgomery reduction here is based on Algorithm 14.32 in
     // Handbook of Applied Cryptography
@@ -504,215 +503,307 @@ fn mul_reduce(this: &mut [u64; 4], by: &[u64; 4], modulus: &[u64; 4], inv: u64) 
     this.copy_from_slice(&res[4..]);
 }
 
-#[test]
-fn setting_bits() {
-    let rng = &mut ::rand::thread_rng();
-    let modulo = U256([0xffffffffffffffff; 4]);
+#[cfg(test)]
+mod test {
+    extern crate serde_json;
+    use rand::{SeedableRng, rngs::StdRng};
 
-    let a = U256::random(rng, &modulo);
-    let mut e = U256::zero();
-    for (i, b) in a.bits().enumerate() {
-        assert!(e.set_bit(255 - i, b));
+    use super::*;
+    use crate::{Fr, G1, G2, Group, Gt};
+
+    #[test]
+    fn setting_bits() {
+        let rng = &mut ::rand::thread_rng();
+        let modulo = U256([0xffffffffffffffff; 4]);
+
+        let a = U256::random(rng, &modulo);
+        let mut e = U256::zero();
+        for (i, b) in a.bits().enumerate() {
+            assert!(e.set_bit(255 - i, b));
+        }
+
+        assert_eq!(a, e);
     }
 
-    assert_eq!(a, e);
-}
+    #[test]
+    fn testing_divrem() {
+        let rng = &mut ::rand::thread_rng();
 
-#[test]
-fn testing_divrem() {
-    let rng = &mut ::rand::thread_rng();
-
-    let modulo = U256([
-        0x3c208c16d87cfd47,
-        0x97816a916871ca8d,
-        0xb85045b68181585d,
-        0x30644e72e131a029,
-    ]);
-
-    for _ in 0..100 {
-        let c0 = U256::random(rng, &modulo);
-        let c1 = U256::random(rng, &modulo);
-
-        let c1q_plus_c0 = U512::from(&c1, &c0, &modulo);
-
-        let (new_c1, new_c0) = c1q_plus_c0.divrem(&modulo);
-
-        assert_eq!(c1, new_c1.unwrap());
-        assert_eq!(c0, new_c0);
-    }
-
-    {
-        // Modulus should become 1*q + 0
-        let a = U512([
+        let modulo = U256([
             0x3c208c16d87cfd47,
             0x97816a916871ca8d,
             0xb85045b68181585d,
             0x30644e72e131a029,
-            0,
-            0,
-            0,
-            0,
         ]);
 
-        let (c1, c0) = a.divrem(&modulo);
-        assert_eq!(c1.unwrap(), U256::one());
-        assert_eq!(c0, U256::zero());
-    }
+        for _ in 0..100 {
+            let c0 = U256::random(rng, &modulo);
+            let c1 = U256::random(rng, &modulo);
 
-    {
-        // Modulus squared minus 1 should be (q-1) q + q-1
-        let a = U512([
-            0x3b5458a2275d69b0,
-            0xa602072d09eac101,
-            0x4a50189c6d96cadc,
-            0x04689e957a1242c8,
-            0x26edfa5c34c6b38d,
-            0xb00b855116375606,
-            0x599a6f7c0348d21c,
-            0x0925c4b8763cbf9c,
-        ]);
+            let c1q_plus_c0 = U512::from(&c1, &c0, &modulo);
 
-        let (c1, c0) = a.divrem(&modulo);
-        assert_eq!(
-            c1.unwrap(),
-            U256([
-                0x3c208c16d87cfd46,
+            let (new_c1, new_c0) = c1q_plus_c0.divrem(&modulo);
+
+            assert_eq!(c1, new_c1.unwrap());
+            assert_eq!(c0, new_c0);
+        }
+
+        {
+            // Modulus should become 1*q + 0
+            let a = U512([
+                0x3c208c16d87cfd47,
                 0x97816a916871ca8d,
                 0xb85045b68181585d,
                 0x30644e72e131a029,
-            ],)
-        );
-        assert_eq!(
-            c0,
-            U256([
-                0x3c208c16d87cfd46,
-                0x97816a916871ca8d,
+                0,
+                0,
+                0,
+                0,
+            ]);
+
+            let (c1, c0) = a.divrem(&modulo);
+            assert_eq!(c1.unwrap(), U256::one());
+            assert_eq!(c0, U256::zero());
+        }
+
+        {
+            // Modulus squared minus 1 should be (q-1) q + q-1
+            let a = U512([
+                0x3b5458a2275d69b0,
+                0xa602072d09eac101,
+                0x4a50189c6d96cadc,
+                0x04689e957a1242c8,
+                0x26edfa5c34c6b38d,
+                0xb00b855116375606,
+                0x599a6f7c0348d21c,
+                0x0925c4b8763cbf9c,
+            ]);
+
+            let (c1, c0) = a.divrem(&modulo);
+            assert_eq!(
+                c1.unwrap(),
+                U256([
+                    0x3c208c16d87cfd46,
+                    0x97816a916871ca8d,
+                    0xb85045b68181585d,
+                    0x30644e72e131a029,
+                ],)
+            );
+            assert_eq!(
+                c0,
+                U256([
+                    0x3c208c16d87cfd46,
+                    0x97816a916871ca8d,
+                    0xb85045b68181585d,
+                    0x30644e72e131a029,
+                ],)
+            );
+        }
+
+        {
+            // Modulus squared minus 2 should be (q-1) q + q-2
+            let a = U512([
+                0x3b5458a2275d69af,
+                0xa602072d09eac101,
+                0x4a50189c6d96cadc,
+                0x04689e957a1242c8,
+                0x26edfa5c34c6b38d,
+                0xb00b855116375606,
+                0x599a6f7c0348d21c,
+                0x0925c4b8763cbf9c,
+            ]);
+
+            let (c1, c0) = a.divrem(&modulo);
+
+            assert_eq!(
+                c1.unwrap(),
+                U256([
+                    0x3c208c16d87cfd46,
+                    0x97816a916871ca8d,
+                    0xb85045b68181585d,
+                    0x30644e72e131a029,
+                ],)
+            );
+            assert_eq!(
+                c0,
+                U256([
+                    0x3c208c16d87cfd45,
+                    0x97816a916871ca8d,
+                    0xb85045b68181585d,
+                    0x30644e72e131a029,
+                ],)
+            );
+        }
+
+        {
+            // Ridiculously large number should fail
+            let a = U512([
+                0xffffffffffffffff,
+                0xffffffffffffffff,
+                0xffffffffffffffff,
+                0xffffffffffffffff,
+                0xffffffffffffffff,
+                0xffffffffffffffff,
+                0xffffffffffffffff,
+                0xffffffffffffffff,
+            ]);
+
+            let (c1, c0) = a.divrem(&modulo);
+            assert!(c1.is_none());
+            assert_eq!(
+                c0,
+                U256([
+                    0xf32cfc5b538afa88,
+                    0xb5e71911d44501fb,
+                    0x47ab1eff0a417ff6,
+                    0x06d89f71cab8351f,
+                ],)
+            );
+        }
+
+        {
+            // Modulus squared should fail
+            let a = U512([
+                0x3b5458a2275d69b1,
+                0xa602072d09eac101,
+                0x4a50189c6d96cadc,
+                0x04689e957a1242c8,
+                0x26edfa5c34c6b38d,
+                0xb00b855116375606,
+                0x599a6f7c0348d21c,
+                0x0925c4b8763cbf9c,
+            ]);
+
+            let (c1, c0) = a.divrem(&modulo);
+            assert!(c1.is_none());
+            assert_eq!(c0, U256::zero());
+        }
+
+        {
+            // Modulus squared plus one should fail
+            let a = U512([
+                0x3b5458a2275d69b2,
+                0xa602072d09eac101,
+                0x4a50189c6d96cadc,
+                0x04689e957a1242c8,
+                0x26edfa5c34c6b38d,
+                0xb00b855116375606,
+                0x599a6f7c0348d21c,
+                0x0925c4b8763cbf9c,
+            ]);
+
+            let (c1, c0) = a.divrem(&modulo);
+            assert!(c1.is_none());
+            assert_eq!(c0, U256::one());
+        }
+
+        {
+            let modulo = U256([
+                0x43e1f593f0000001,
+                0x2833e84879b97091,
                 0xb85045b68181585d,
                 0x30644e72e131a029,
-            ],)
-        );
+            ]);
+
+            // Fr modulus masked off is valid
+            let a = U512([
+                0xffffffffffffffff,
+                0xffffffffffffffff,
+                0xffffffffffffffff,
+                0xffffffffffffffff,
+                0xffffffffffffffff,
+                0xffffffffffffffff,
+                0xffffffffffffffff,
+                0x07ffffffffffffff,
+            ]);
+
+            let (c1, c0) = a.divrem(&modulo);
+
+            assert!(c1.unwrap() < modulo);
+            assert!(c0 < modulo);
+        }
     }
 
-    {
-        // Modulus squared minus 2 should be (q-1) q + q-2
-        let a = U512([
-            0x3b5458a2275d69af,
-            0xa602072d09eac101,
-            0x4a50189c6d96cadc,
-            0x04689e957a1242c8,
-            0x26edfa5c34c6b38d,
-            0xb00b855116375606,
-            0x599a6f7c0348d21c,
-            0x0925c4b8763cbf9c,
-        ]);
+    const ALL_ONES: &str =
+        "[18446744073709551615,18446744073709551615,18446744073709551615,18446744073709551615]";
 
-        let (c1, c0) = a.divrem(&modulo);
+    ///`debug_assert!(0 == carry)` in the `add_nocarry` function assumes both operands are already
+    /// reduced below modulus, but does not check or enforce it. Debug builds will trip the assert,
+    /// while release ones will overflow and wrap around, returning incorrect values
+    #[test]
+    // This test (temporarily) asserts this behavior and will be flipped to block the bug being
+    // reintroduced
+    #[should_panic]
+    fn add_nocarry_assert_fires_for_overflowing_operands() {
+        let mut a = U256([u64::MAX; 4]);
+        let b = U256([1, 0, 0, 0]);
+        let modulo = U256([u64::MAX; 4]);
 
-        assert_eq!(
-            c1.unwrap(),
-            U256([
-                0x3c208c16d87cfd46,
-                0x97816a916871ca8d,
-                0xb85045b68181585d,
-                0x30644e72e131a029,
-            ],)
-        );
-        assert_eq!(
-            c0,
-            U256([
-                0x3c208c16d87cfd45,
-                0x97816a916871ca8d,
-                0xb85045b68181585d,
-                0x30644e72e131a029,
-            ],)
-        );
+        a.add(&b, &modulo);
     }
 
-    {
-        // Ridiculously large number should fail
-        let a = U512([
-            0xffffffffffffffff,
-            0xffffffffffffffff,
-            0xffffffffffffffff,
-            0xffffffffffffffff,
-            0xffffffffffffffff,
-            0xffffffffffffffff,
-            0xffffffffffffffff,
-            0xffffffffffffffff,
-        ]);
-
-        let (c1, c0) = a.divrem(&modulo);
-        assert!(c1.is_none());
-        assert_eq!(
-            c0,
-            U256([
-                0xf32cfc5b538afa88,
-                0xb5e71911d44501fb,
-                0x47ab1eff0a417ff6,
-                0x06d89f71cab8351f,
-            ],)
-        );
+    /// `Fr` us `U256` limbs in Montgomery form, but nothing checks the value is below the modulus, and
+    /// 2^256 - 1 is accepted
+    #[test]
+    fn fr_deserialize_accepts_value_above_modulus() {
+        let fr: Result<Fr, _> = serde_json::from_str(ALL_ONES);
+        assert!(fr.is_ok(), "Invalid (above modulus) Fr accepted");
     }
 
-    {
-        // Modulus squared should fail
-        let a = U512([
-            0x3b5458a2275d69b1,
-            0xa602072d09eac101,
-            0x4a50189c6d96cadc,
-            0x04689e957a1242c8,
-            0x26edfa5c34c6b38d,
-            0xb00b855116375606,
-            0x599a6f7c0348d21c,
-            0x0925c4b8763cbf9c,
-        ]);
-
-        let (c1, c0) = a.divrem(&modulo);
-        assert!(c1.is_none());
-        assert_eq!(c0, U256::zero());
+    /// `G1` accepts a point not on its curve
+    #[test]
+    fn g1_deserialize_accepts_off_curve_point() {
+        let json = r#"{"x":[1,0,0,0],"y":[1,0,0,0],"z":[1,0,0,0]}"#;
+        let g: Result<G1, _> = serde_json::from_str(json);
+        assert!(g.is_ok(), "off-curve G1 point was accepted");
     }
 
-    {
-        // Modulus squared plus one should fail
-        let a = U512([
-            0x3b5458a2275d69b2,
-            0xa602072d09eac101,
-            0x4a50189c6d96cadc,
-            0x04689e957a1242c8,
-            0x26edfa5c34c6b38d,
-            0xb00b855116375606,
-            0x599a6f7c0348d21c,
-            0x0925c4b8763cbf9c,
-        ]);
-
-        let (c1, c0) = a.divrem(&modulo);
-        assert!(c1.is_none());
-        assert_eq!(c0, U256::one());
+    /// `G2` accepts a point not on its curve
+    #[test]
+    fn g2_deserialize_accepts_off_curve_point() {
+        let fq2 = r#"{"c0":[1,0,0,0],"c1":[0,0,0,0]}"#;
+        let json = format!(r#"{{"x":{fq2},"y":{fq2},"z":{fq2}}}"#);
+        let g: Result<G2, _> = serde_json::from_str(&json);
+        assert!(g.is_ok(), "off-curve G2 point was accepted");
     }
 
-    {
-        let modulo = U256([
-            0x43e1f593f0000001,
-            0x2833e84879b97091,
-            0xb85045b68181585d,
-            0x30644e72e131a029,
-        ]);
+    /// All-zero `Gt` is not a group element and panics on `inverse`
+    #[test]
+    #[should_panic]
+    fn zero_gt_is_accepted_and_later_inverse_panics() {
+        let fq2 = r#"{{"c0":[1,0,0,0],"c1":[0,0,0,0]}}"#;
+        let fq6 = format!(r#"{{"c0":{fq2},"c1":{fq2},"c2":{fq2}}}"#);
+        let json = format!(r#"{{"c0":{fq6},"c1":{fq6}}}"#);
+        let gt: Result<Gt, _> = serde_json::from_str(&json);
+        assert!(gt.is_ok(), "non-group element accepted");
+        let _ = gt.unwrap().inverse();
+    }
 
-        // Fr modulus masked off is valid
-        let a = U512([
-            0xffffffffffffffff,
-            0xffffffffffffffff,
-            0xffffffffffffffff,
-            0xffffffffffffffff,
-            0xffffffffffffffff,
-            0xffffffffffffffff,
-            0xffffffffffffffff,
-            0x07ffffffffffffff,
-        ]);
+    /// `into_bytes` writes its Montgomery limbs, but `from_slice` reads it as a plain big-endian
+    /// number
+    #[test]
+    fn fr_bytes_do_not_round_trip_successfully() {
+        let mut rng = StdRng::seed_from_u64(250);
+        let x: Fr = rng.r#gen();
+        let back = Fr::from_slice(&x.into_bytes());
+        assert!(back.is_ok_and(|val| val != x), "round-trip was successful")
+    }
 
-        let (c1, c0) = a.divrem(&modulo);
-
-        assert!(c1.unwrap() < modulo);
-        assert!(c0 < modulo);
+    /// `mul` has a final (conditional) subtraction, and so it results in a reduced value and does
+    /// not trigger the assert.
+    #[test]
+    fn ordinary_field_arithmetic_does_not_trip_assert() {
+        let mut rng = StdRng::seed_from_u64(250);
+        let mut acc: Fr = rng.r#gen();
+        for _ in 0..200_000 {
+            let y: Fr = rng.r#gen();
+            acc = acc * y + y - acc;
+        }
+        let mut g = G1::one();
+        for _ in 0..200 {
+            let k: Fr = rng.r#gen();
+            g = g * k + G1::one();
+        }
+        assert!(true) // reached
     }
 }
