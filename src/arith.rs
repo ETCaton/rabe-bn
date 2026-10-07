@@ -204,7 +204,7 @@ impl U256 {
     #[inline]
     pub fn into_bytes(&self) -> Vec<u8> {
         let mut wtr = vec![];
-        for elem in self.0 {
+        for elem in self.0.iter().rev().copied() {
             wtr.write_u64::<BigEndian>(elem).unwrap();
         }
         wtr
@@ -249,6 +249,11 @@ impl U256 {
 
     /// Add `other` to `self` (mod `modulo`)
     pub fn add(&mut self, other: &U256, modulo: &U256) {
+        assert!(
+            *self < *modulo && *other < *modulo,
+            "operands not below modulus"
+        );
+
         add_nocarry(&mut self.0, &other.0);
 
         if *self >= *modulo {
@@ -258,6 +263,11 @@ impl U256 {
 
     /// Subtract `other` from `self` (mod `modulo`)
     pub fn sub(&mut self, other: &U256, modulo: &U256) {
+        assert!(
+            *self < *modulo && *other < *modulo,
+            "operands not below modulus"
+        );
+
         if *self < *other {
             add_nocarry(&mut self.0, &modulo.0);
         }
@@ -268,6 +278,8 @@ impl U256 {
     /// Multiply `self` by `other` (mod `modulo`) via the Montgomery
     /// multiplication method.
     pub fn mul(&mut self, other: &U256, modulo: &U256, inv: u64) {
+        assert!(*other < *modulo, "operands not below modulus");
+
         mul_reduce(&mut self.0, &other.0, &modulo.0, inv);
 
         if *self >= *modulo {
@@ -277,6 +289,8 @@ impl U256 {
 
     /// Turn `self` into its additive inverse (mod `modulo`)
     pub fn neg(&mut self, modulo: &U256) {
+        assert!(*self < *modulo, "operands not below modulus");
+
         if *self > Self::zero() {
             let mut tmp = modulo.0;
             sub_noborrow(&mut tmp, &self.0);
@@ -295,6 +309,7 @@ impl U256 {
         // Guajardo Kumar Paar Pelzl
         // Efficient Software-Implementation of Finite Fields with Applications to Cryptography
         // Algorithm 16 (BEA for Inversion in Fp)
+        assert!(*self < *modulo, "operands not below modulus");
 
         let mut u = *self;
         let mut v = *modulo;
@@ -505,11 +520,16 @@ fn mul_reduce(this: &mut [u64; 4], by: &[u64; 4], modulus: &[u64; 4], inv: u64) 
 
 #[cfg(test)]
 mod test {
+    #[cfg(feature = "borsh")]
+    extern crate borsh;
+    #[cfg(feature = "serde")]
     extern crate serde_json;
     use rand::{SeedableRng, rngs::StdRng};
 
     use super::*;
-    use crate::{Fr, G1, G2, Group, Gt};
+    use crate::{Fr, G1, Group};
+    #[cfg(feature = "serde")]
+    use crate::{G2, Gt};
 
     #[test]
     fn setting_bits() {
@@ -724,16 +744,11 @@ mod test {
         }
     }
 
-    const ALL_ONES: &str =
-        "[18446744073709551615,18446744073709551615,18446744073709551615,18446744073709551615]";
-
-    ///`debug_assert!(0 == carry)` in the `add_nocarry` function assumes both operands are already
-    /// reduced below modulus, but does not check or enforce it. Debug builds will trip the assert,
-    /// while release ones will overflow and wrap around, returning incorrect values
+    ///`debug_assert!(0 == carry)` in the `add_nocarry` function assumed both operands are already
+    /// reduced below modulus, but does not check or enforce it. Debug builds tripped the assert,
+    /// but release ones overflowed and wrapped around, returning incorrect values
     #[test]
-    // This test (temporarily) asserts this behavior and will be flipped to block the bug being
-    // reintroduced
-    #[should_panic]
+    #[should_panic(expected = "operands not below modulus")]
     fn add_nocarry_assert_fires_for_overflowing_operands() {
         let mut a = U256([u64::MAX; 4]);
         let b = U256([1, 0, 0, 0]);
@@ -742,57 +757,307 @@ mod test {
         a.add(&b, &modulo);
     }
 
-    /// `Fr` us `U256` limbs in Montgomery form, but nothing checks the value is below the modulus, and
-    /// 2^256 - 1 is accepted
     #[test]
-    fn fr_deserialize_accepts_value_above_modulus() {
-        let fr: Result<Fr, _> = serde_json::from_str(ALL_ONES);
-        assert!(fr.is_ok(), "Invalid (above modulus) Fr accepted");
+    #[cfg(feature = "borsh")]
+    fn fr_borsh_rejects_values_above_modulus() {
+        let bytes = [0xffu8; 32];
+        assert!(borsh::from_slice::<Fr>(&bytes).is_err())
     }
 
-    /// `G1` accepts a point not on its curve
     #[test]
-    fn g1_deserialize_accepts_off_curve_point() {
+    #[cfg(feature = "borsh")]
+    fn fr_borsh_round_trips_values_below_modulus() {
+        let x = Fr::one() + Fr::one();
+        let bytes = borsh::to_vec(&x).unwrap();
+        assert!(borsh::from_slice::<Fr>(&bytes).unwrap() == x);
+    }
+
+    #[test]
+    #[cfg(feature = "borsh")]
+    fn g1_borsh_rejects_off_curve_point() {
+        use crate::G1;
+
+        // x = y = z = 1 would not be on the curve
+        let bytes = [1u64, 0, 0, 0]
+            .repeat(3)
+            .into_iter()
+            .flat_map(|limb| limb.to_le_bytes())
+            .collect::<Vec<_>>();
+
+        assert!(borsh::from_slice::<G1>(&bytes).is_err());
+    }
+
+    #[test]
+    #[cfg(feature = "borsh")]
+    fn g2_borsh_round_trips_coordinates() {
+        use crate::{G2, Group};
+
+        let p = G2::one() + G2::one();
+        assert!(
+            borsh::to_vec(&p)
+                .map(|bytes| borsh::from_slice::<G2>(&bytes))
+                .flatten()
+                .is_ok_and(|bytes| bytes == p)
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "borsh")]
+    fn g2_borsh_rejects_flipped_coordinate() {
+        use crate::{G2, Group};
+
+        let p = G2::one() + G2::one();
+        let mut bytes = borsh::to_vec(&p).unwrap();
+        bytes[0] ^= 1;
+        assert!(borsh::from_slice::<G2>(&bytes).is_err());
+    }
+
+    #[test]
+    #[should_panic(expected = "operands not below modulus")]
+    fn sub_rejects_unreduced_operands() {
+        let mut a = U256([1, 0, 0, 0]);
+        let b = U256([u64::MAX; 4]);
+        let modulo = U256([7, 0, 0, 0]);
+        a.sub(&b, &modulo);
+    }
+
+    #[test]
+    #[should_panic(expected = "operands not below modulus")]
+    fn mul_rejects_unreduced_operands() {
+        let mut a = U256([1, 0, 0, 0]);
+        let b = U256([u64::MAX; 4]);
+        let modulo = U256([7, 0, 0, 0]);
+        a.mul(&b, &modulo, 1);
+    }
+
+    #[test]
+    #[should_panic(expected = "operands not below modulus")]
+    fn neg_rejects_unreduced_operands() {
+        let mut a = U256([u64::MAX; 4]);
+        let modulo = U256([7, 0, 0, 0]);
+        a.neg(&modulo);
+    }
+
+    #[test]
+    fn reduced_operands_are_accepted() {
+        let modulo = U256([7, 0, 0, 0]);
+        let mut a = U256([5, 0, 0, 0]);
+        a.add(&U256([4, 0, 0, 0]), &modulo);
+        a.sub(&U256([3, 0, 0, 0]), &modulo);
+        assert_eq!(a, U256([6, 0, 0, 0]));
+        a.neg(&modulo);
+        assert_eq!(a, U256([1, 0, 0, 0]));
+    }
+
+    /// `Fr` us `U256` limbs in Montgomery form, but nothing checked if thevalue is below the
+    /// modulus, so 2^256 - 1 was accepted
+    #[test]
+    #[cfg(feature = "serde")]
+    fn fr_deserialize_rejects_value_above_modulus() {
+        let all_ones: &str =
+            "[18446744073709551615,18446744073709551615,18446744073709551615,18446744073709551615]";
+        let fr: Result<Fr, _> = serde_json::from_str(all_ones);
+        let err = fr
+            .expect_err("Invalid (above modulus) Fr accepted")
+            .to_string();
+        assert!(err.contains("not below modulus"), "{}", err);
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn fr_deserialize_boundary_values() {
+        let r: Vec<u64> = vec![
+            4891460686036598785,
+            2896914383306846353,
+            13281191951274694749,
+            3486998266802970665,
+        ];
+        let r_minus_1 = r.iter().map(|e| e - 1).collect::<Vec<_>>();
+
+        assert!(serde_json::from_str::<Fr>(&format!("{:?}", r)).is_err());
+        assert!(serde_json::from_str::<Fr>(&format!("{:?}", r_minus_1)).is_ok());
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn fr_round_trips_values_below_modulus() {
+        let mut rng = StdRng::seed_from_u64(250);
+        for _ in 0..200 {
+            let x: Fr = rng.r#gen();
+            assert!(
+                serde_json::to_string(&x)
+                    .map(|s| serde_json::from_str::<Fr>(&s))
+                    .flatten()
+                    .is_ok_and(|back| back == x)
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn g1_deserialize_rejects_coordinates_above_modulus() {
+        let json = format!(
+            r#"{{"x":[4332616871279656263,10917124144477883021,13281191951274694749,3486998266802970665],"y":[1,0,0,0],"z":[1,0,0,0]}}"#
+        );
+        assert!(
+            serde_json::from_str::<G1>(&json)
+                .is_err_and(|err| err.to_string().contains("not below modulus"))
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn g1_deserialize_rejects_off_curve_point() {
         let json = r#"{"x":[1,0,0,0],"y":[1,0,0,0],"z":[1,0,0,0]}"#;
         let g: Result<G1, _> = serde_json::from_str(json);
-        assert!(g.is_ok(), "off-curve G1 point was accepted");
+        assert!(
+            g.is_err_and(|err| err.to_string().contains("not on the curve")),
+            "off-curve G1 point was accepted"
+        );
     }
 
-    /// `G2` accepts a point not on its curve
     #[test]
-    fn g2_deserialize_accepts_off_curve_point() {
+    #[cfg(feature = "serde")]
+    fn g2_deserialize_rejects_off_curve_point() {
         let fq2 = r#"{"c0":[1,0,0,0],"c1":[0,0,0,0]}"#;
         let json = format!(r#"{{"x":{fq2},"y":{fq2},"z":{fq2}}}"#);
         let g: Result<G2, _> = serde_json::from_str(&json);
-        assert!(g.is_ok(), "off-curve G2 point was accepted");
+        assert!(
+            g.is_err_and(|err| err.to_string().contains("not on the curve")),
+            "off-curve G2 point was accepted"
+        );
     }
 
-    /// All-zero `Gt` is not a group element and panics on `inverse`
     #[test]
-    #[should_panic]
-    fn zero_gt_is_accepted_and_later_inverse_panics() {
-        let fq2 = r#"{{"c0":[1,0,0,0],"c1":[0,0,0,0]}}"#;
+    #[cfg(feature = "serde")]
+    fn curve_points_round_trip_via_serde() {
+        let mut rng = StdRng::seed_from_u64(250);
+        for _ in 0..3 {
+            let a: G1 = rng.r#gen();
+            let b: G2 = rng.r#gen();
+            assert!(
+                serde_json::to_string(&a)
+                    .map(|s| serde_json::from_str::<G1>(&s))
+                    .flatten()
+                    .is_ok_and(|serde_a| serde_a == a)
+            );
+            assert!(
+                serde_json::to_string(&b)
+                    .map(|s| serde_json::from_str::<G2>(&s))
+                    .flatten()
+                    .is_ok_and(|serde_b| serde_b == b)
+            )
+        }
+
+        let z1 = G1::zero();
+        let z2 = G2::zero();
+        assert!(
+            dbg!(
+                serde_json::to_string(&z1)
+                    .map(|s| serde_json::from_str::<G1>(&s))
+                    .flatten()
+            )
+            .is_ok_and(|z1| z1.is_zero())
+        );
+        assert!(
+            serde_json::to_string(&z2)
+                .map(|s| serde_json::from_str::<G2>(&s))
+                .flatten()
+                .is_ok_and(|z2| z2.is_zero())
+        );
+    }
+
+    /// `P + (-P)` can leave stale `x` and `y` values with `z == 0` (the identity) which needs to
+    /// round trip in its canonical form
+    #[test]
+    #[cfg(feature = "serde")]
+    fn identity_round_trips_and_stays_canonical() {
+        let mut rng = StdRng::seed_from_u64(250);
+        let p: G1 = rng.r#gen();
+        let stale = p + (-p);
+        assert!(stale.is_zero());
+        assert!(
+            serde_json::to_string(&stale)
+                .map(|s| serde_json::from_str::<G1>(&s))
+                .flatten()
+                .is_ok_and(|back| back.is_zero() && back.into_bytes() == G1::zero().into_bytes())
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn gt_rejects_zero_element() {
+        let fq2 = r#"{"c0":[1,0,0,0],"c1":[0,0,0,0]}"#;
         let fq6 = format!(r#"{{"c0":{fq2},"c1":{fq2},"c2":{fq2}}}"#);
         let json = format!(r#"{{"c0":{fq6},"c1":{fq6}}}"#);
-        let gt: Result<Gt, _> = serde_json::from_str(&json);
-        assert!(gt.is_ok(), "non-group element accepted");
-        let _ = gt.unwrap().inverse();
+        assert!(
+            serde_json::from_str::<Gt>(&json)
+                .is_err_and(|err| err.to_string().contains("not in order-r subgroup"))
+        )
     }
 
-    /// `into_bytes` writes its Montgomery limbs, but `from_slice` reads it as a plain big-endian
-    /// number
     #[test]
-    fn fr_bytes_do_not_round_trip_successfully() {
+    #[cfg(feature = "serde")]
+    fn gt_deserialize_rejects_elements_outside_subgroup() {
         let mut rng = StdRng::seed_from_u64(250);
-        let x: Fr = rng.r#gen();
-        let back = Fr::from_slice(&x.into_bytes());
-        assert!(back.is_ok_and(|val| val != x), "round-trip was successful")
+        let g: Gt = rng.r#gen();
+        assert!(
+            (serde_json::to_value(&g)
+                .and_then(|mut value| {
+                    value["c0"]["c0"]["c0"] = serde_json::json!([1, 2, 3, 4]);
+                    Ok(value)
+                })
+                .map(|json| serde_json::from_value::<Gt>(json)))
+            .flatten()
+            .is_err_and(|err| err.to_string().contains("not in order-r subgroup"))
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn gt_round_trips() {
+        let mut rng = StdRng::seed_from_u64(250);
+        let g: Gt = rng.r#gen();
+        assert!(
+            serde_json::to_string(&g)
+                .map(|s| serde_json::from_str::<Gt>(&s))
+                .flatten()
+                .is_ok_and(|back| back == g)
+        )
+    }
+
+    #[test]
+    #[cfg(feature = "borsh")]
+    fn gt_borsh_rejects_zero_element() {
+        use crate::Gt;
+        let bytes = vec![0u8; 12 * 32];
+        assert!(borsh::from_slice::<Gt>(&bytes).is_err());
+    }
+
+    #[test]
+    fn fr_bytes_round_trip_successfully() {
+        let mut rng = StdRng::seed_from_u64(250);
+        for _ in 0..200 {
+            let x: Fr = rng.r#gen();
+            let bytes = x.into_bytes();
+            assert_eq!(bytes.len(), 32);
+            assert!(Fr::from_slice(&bytes).unwrap() == x);
+        }
+        assert_eq!(Fr::one().into_bytes()[31], 1);
+        assert!(Fr::zero().into_bytes().iter().all(|b| *b == 0));
+    }
+
+    #[test]
+    fn u256_bytes_ruond_trip() {
+        let n = U256([1, 2, 3, 4]);
+        assert!(U256::from_slice(&n.into_bytes()).is_ok_and(|val| val == n));
     }
 
     /// `mul` has a final (conditional) subtraction, and so it results in a reduced value and does
     /// not trigger the assert.
     #[test]
     fn ordinary_field_arithmetic_does_not_trip_assert() {
+        let mut rng = StdRng::seed_from_u64(250);
         let mut rng = StdRng::seed_from_u64(250);
         let mut acc: Fr = rng.r#gen();
         for _ in 0..200_000 {
@@ -804,6 +1069,5 @@ mod test {
             let k: Fr = rng.r#gen();
             g = g * k + G1::one();
         }
-        assert!(true) // reached
     }
 }

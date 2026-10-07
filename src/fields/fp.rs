@@ -12,10 +12,42 @@ use serde::{Deserialize, Serialize};
 macro_rules! field_impl {
     ($name:ident, $modulus:expr_2021, $rsquared:expr_2021, $rcubed:expr_2021, $one:expr_2021, $inv:expr_2021) => {
         #[derive(Copy, Clone, PartialEq, Eq, Debug)]
-        #[cfg_attr(feature = "borsh", derive(BorshSerialize, BorshDeserialize))]
-        #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+        #[cfg_attr(feature = "borsh", derive(BorshSerialize))]
+        #[cfg_attr(feature = "serde", derive(Serialize))]
         #[repr(C)]
         pub struct $name(U256);
+
+        // These are the Montgomery form of the element, and therefore *must* be below the modulus.
+        // The default/naive deserialization simply brings in the correct type and its literal
+        // value
+        #[cfg(feature = "serde")]
+        impl<'de> Deserialize<'de> for $name {
+            fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+                let limbs = U256::deserialize(deserializer)?;
+                if limbs < U256($modulus) {
+                    Ok($name(limbs))
+                } else {
+                    Err(serde::de::Error::custom(
+                        "field element is not below modulus",
+                    ))
+                }
+            }
+        }
+
+        #[cfg(feature = "borsh")]
+        impl BorshDeserialize for $name {
+            fn deserialize_reader<R: borsh::io::Read>(reader: &mut R) -> borsh::io::Result<Self> {
+                let limbs = U256::deserialize_reader(reader)?;
+                if limbs < U256($modulus) {
+                    Ok($name(limbs))
+                } else {
+                    Err(borsh::io::Error::new(
+                        borsh::io::ErrorKind::InvalidData,
+                        "field element is not below modulus",
+                    ))
+                }
+            }
+        }
 
         impl From<$name> for U256 {
             #[inline]
@@ -122,7 +154,7 @@ macro_rules! field_impl {
 
             #[inline]
             fn into_bytes(self) -> Vec<u8> {
-                self.0.into_bytes()
+                U256::from(self).into_bytes()
             }
 
             fn inverse(mut self) -> Option<Self> {

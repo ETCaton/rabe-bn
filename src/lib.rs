@@ -93,7 +93,7 @@ impl Fr {
             .map_err(|_| FieldError::InvalidSliceLength)
             .map(Fr::new_mul_factor)
     }
-    pub fn into_bytes(&self) -> Vec<u8> {
+    pub fn into_bytes(self) -> Vec<u8> {
         self.0.into_bytes()
     }
     pub fn new_mul_factor(val: arith::U256) -> Self {
@@ -185,7 +185,7 @@ pub trait Group:
     fn one() -> Self;
     fn random<R: Rng + ?Sized>(rng: &mut R) -> Self;
     fn is_zero(&self) -> bool;
-    fn into_bytes(&self) -> Vec<u8>;
+    fn into_bytes(self) -> Vec<u8>;
     fn normalize(&mut self);
 }
 
@@ -380,12 +380,21 @@ impl Debug for G2 {
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "borsh", derive(BorshSerialize, BorshDeserialize))]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "borsh", derive(BorshSerialize))]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 #[repr(C)]
 pub struct Gt(fields::Fq12);
 
 impl Gt {
+    /// Checks `Fq12` from untrusted data; `Gt` is the subgroup of order `r`, so we check that
+    /// `g^r == 1` and reject `0` to avoid a latent panic if inverse is called later
+    fn validated(value: fields::Fq12) -> Result<Self, &'static str> {
+        if value.pow(fields::Fr::modulus()) == fields::Fq12::one() {
+            Ok(Gt(value))
+        } else {
+            Err("element is not in order-r subgroup")
+        }
+    }
     pub fn one() -> Self {
         Gt(fields::Fq12::one())
     }
@@ -395,7 +404,7 @@ impl Gt {
     pub fn inverse(&self) -> Self {
         Gt(self.0.inverse().unwrap())
     }
-    pub fn into_bytes(&self) -> Vec<u8> {
+    pub fn into_bytes(self) -> Vec<u8> {
         self.0.into_bytes()
     }
 }
@@ -412,6 +421,21 @@ pub trait SerializableGt:
 }
 
 impl SerializableGt for Gt {}
+
+#[cfg(feature = "serde")]
+impl<'de> Deserialize<'de> for Gt {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Gt::validated(fields::Fq12::deserialize(deserializer)?).map_err(serde::de::Error::custom)
+    }
+}
+
+#[cfg(feature = "borsh")]
+impl BorshDeserialize for Gt {
+    fn deserialize_reader<R: borsh::io::Read>(reader: &mut R) -> borsh::io::Result<Self> {
+        Gt::validated(fields::Fq12::deserialize_reader(reader)?)
+            .map_err(|e| borsh::io::Error::new(borsh::io::ErrorKind::InvalidData, e))
+    }
+}
 
 impl Mul<Gt> for Gt {
     type Output = Gt;

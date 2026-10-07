@@ -36,14 +36,15 @@ pub trait GroupParams: Sized {
     fn name() -> &'static str;
     fn one() -> G<Self>;
     fn coeff_b() -> Self::Base;
-    #[allow(dead_code)]
+    /// True when curve group has a cofactor above 1, i.e. when being on the curve does not
+    /// imply being in the prime-order subgroup. Used in Deserializer implementations.
     fn check_order() -> bool {
         false
     }
 }
 
-#[cfg_attr(feature = "borsh", derive(BorshSerialize, BorshDeserialize))]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "borsh", derive(BorshSerialize,))]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 #[repr(C)]
 pub struct G<P: GroupParams> {
     x: P::Base,
@@ -51,11 +52,75 @@ pub struct G<P: GroupParams> {
     z: P::Base,
 }
 
-#[cfg_attr(feature = "borsh", derive(BorshSerialize, BorshDeserialize))]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "borsh", derive(BorshSerialize))]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct AffineG<P: GroupParams> {
     x: P::Base,
     y: P::Base,
+}
+
+// Deserialization builds a point that needs to ensure they are on the curve and in the prime-order
+// subgroup; the 'naive'/default deserialization doesn't do either and just copies provided values
+#[cfg(feature = "serde")]
+#[derive(Deserialize)]
+struct RawJacobian<B> {
+    x: B,
+    y: B,
+    z: B,
+}
+
+#[cfg(feature = "serde")]
+#[derive(Deserialize)]
+struct RawAffine<B> {
+    x: B,
+    y: B,
+}
+
+#[cfg(feature = "serde")]
+impl<'de, P: GroupParams> Deserialize<'de> for G<P> {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let raw = RawJacobian::<P::Base>::deserialize(deserializer)?;
+        G {
+            x: raw.x,
+            y: raw.y,
+            z: raw.z,
+        }
+        .validated()
+        .map_err(serde::de::Error::custom)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de, P: GroupParams> Deserialize<'de> for AffineG<P> {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let raw = RawAffine::<P::Base>::deserialize(deserializer)?;
+        AffineG { x: raw.x, y: raw.y }
+            .validated()
+            .map_err(serde::de::Error::custom)
+    }
+}
+
+#[cfg(feature = "borsh")]
+impl<P: GroupParams> BorshDeserialize for G<P> {
+    fn deserialize_reader<R: borsh::io::Read>(reader: &mut R) -> borsh::io::Result<Self> {
+        let x = P::Base::deserialize_reader(reader)?;
+        let y = P::Base::deserialize_reader(reader)?;
+        let z = P::Base::deserialize_reader(reader)?;
+        G { x, y, z }
+            .validated()
+            .map_err(|e| borsh::io::Error::new(borsh::io::ErrorKind::InvalidData, e))
+    }
+}
+
+#[cfg(feature = "borsh")]
+impl<P: GroupParams> BorshDeserialize for AffineG<P> {
+    fn deserialize_reader<R: borsh::io::Read>(reader: &mut R) -> borsh::io::Result<Self> {
+        let x = P::Base::deserialize_reader(reader)?;
+        let y = P::Base::deserialize_reader(reader)?;
+        AffineG { x, y }
+            .validated()
+            .map_err(|e| borsh::io::Error::new(borsh::io::ErrorKind::InvalidData, e))
+    }
 }
 
 impl<P: GroupParams> PartialEq for AffineG<P> {
@@ -113,6 +178,45 @@ impl<P: GroupParams> PartialEq for G<P> {
 impl<P: GroupParams> Eq for G<P> {}
 
 impl<P: GroupParams> G<P> {
+    /// Checks that a point which is built from potentially untrusted coordinates is, in fact,
+    /// valid. Infinity is accepted because `P` and `-P` addition leaves `x` and `y` with `z == 0`
+    fn validated(self) -> Result<Self, &'static str> {
+        if self.z.is_zero() {
+            return Ok(Self::zero());
+        }
+
+        // y^2 = x^3 + b: Y^2 = X^3 + b + Z^6
+        let z2 = self.z.squared();
+        let z6 = z2.squared() * z2;
+        if self.y.squared() != self.x.squared() * self.x + P::coeff_b() * z6 {
+            return Err("point is not on the curve");
+        }
+
+        if P::check_order() && !self.mul_by_u256(&Fr::modulus()).is_zero() {
+            return Err("point is not in the prime-order subgroup");
+        }
+
+        Ok(self)
+    }
+
+    /// Multiply by any arbitrary 256-bit integer (e.x. those which cannot be written as a `Fr`)
+    fn mul_by_u256(&self, k: &U256) -> Self {
+        let mut res = G::zero();
+        let mut flag = false;
+        for i in k.bits() {
+            if flag {
+                res = res.double();
+            }
+
+            if i {
+                flag = true;
+                res = res + *self;
+            }
+        }
+
+        res
+    }
+
     pub fn into_bytes(self) -> Vec<u8> {
         [
             self.x.into_bytes(),
@@ -142,6 +246,11 @@ impl<P: GroupParams> G<P> {
 }
 
 impl<P: GroupParams> AffineG<P> {
+    /// Affine points cannot be at infinity. Therefore, this only checks the equation itself and
+    /// order (where relevant/implemented)
+    fn validated(self) -> Result<Self, &'static str> {
+        self.to_jacobian().validated().map(|_| self)
+    }
     pub fn to_jacobian(self) -> G<P> {
         G {
             x: self.x,
@@ -203,26 +312,8 @@ impl<P: GroupParams> fmt::Display for G<P> {
 impl<P: GroupParams> Mul<Fr> for G<P> {
     type Output = G<P>;
 
-    #[allow(
-        clippy::suspicious_arithmetic_impl,
-        reason = "Multiplication is just repeated addition"
-    )]
     fn mul(self, other: Fr) -> G<P> {
-        let mut res = G::zero();
-        let mut found_one = false;
-
-        for i in U256::from(other).bits() {
-            if found_one {
-                res = res.double();
-            }
-
-            if i {
-                found_one = true;
-                res = res + self;
-            }
-        }
-
-        res
+        self.mul_by_u256(&U256::from(other))
     }
 }
 
@@ -624,10 +715,7 @@ impl AffineG<G2Params> {
         coeffs.push(r.mixed_addition_step_for_flipped_miller_loop(&q1));
         coeffs.push(r.mixed_addition_step_for_flipped_miller_loop(&q2));
 
-        G2Precomp {
-            q: *self,
-            coeffs ,
-        }
+        G2Precomp { q: *self, coeffs }
     }
 }
 
