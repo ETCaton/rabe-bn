@@ -218,13 +218,12 @@ impl<P: GroupParams> G<P> {
     }
 
     pub fn into_bytes(self) -> Vec<u8> {
-        [
-            self.x.into_bytes(),
-            self.y.into_bytes(),
-            self.z.into_bytes(),
-        ]
-        .concat()
+        match self.to_affine() {
+            Some(a) => [a.x.into_bytes(), a.y.into_bytes()].concat(),
+            None => vec![0u8; 2 * P::Base::zero().into_bytes().len()],
+        }
     }
+
     pub fn to_affine(self) -> Option<AffineG<P>> {
         if self.z.is_zero() {
             None
@@ -1035,4 +1034,51 @@ fn test_y_at_point_at_infinity() {
 
     assert!(G2::zero().y == Fq2::one());
     assert!((-G2::zero()).y == Fq2::one());
+}
+// The bytes for a point don't depend on the Jacobian representation and therefore should not
+// include `z`
+#[test]
+fn point_bytes_do_not_depend_on_z() {
+    extern crate rand;
+    extern crate serde_json;
+
+    use crate::{Fr, G1, G2, Group};
+    use rand::{Rng, SeedableRng, rngs::StdRng};
+
+    let mut rng = StdRng::seed_from_u64(250);
+    let p: G1 = rng.r#gen();
+    let q: G2 = rng.r#gen();
+
+    // For example, this sum has a *different* z than a point that is made by one multiplication
+    let p2 = p + p;
+    let p2_other = p * (Fr::one() + Fr::one());
+    assert!(p2 == p2_other);
+    assert_eq!(p2.into_bytes(), p2_other.into_bytes());
+
+    let mut normalized = p2;
+    normalized.normalize();
+    assert_eq!(p2.into_bytes(), normalized.into_bytes());
+
+    let q2 = q + q;
+    let mut normalized = q2;
+    normalized.normalize();
+    assert_eq!(q2.into_bytes(), normalized.into_bytes());
+}
+
+#[test]
+fn test_identity_bytes_are_always_zero() {
+    extern crate rand;
+    extern crate serde_json;
+
+    use crate::{G1, G2, Group};
+    use rand::{Rng, SeedableRng, rngs::StdRng};
+
+    let mut rng = StdRng::seed_from_u64(250);
+    let p: G1 = rng.r#gen();
+    let stale = p + (-p);
+    assert_eq!(stale.into_bytes(), G1::zero().into_bytes());
+    assert!(G1::zero().into_bytes().iter().all(|b| *b == 0));
+    assert!(G2::zero().into_bytes().iter().all(|b| *b == 0));
+    assert_eq!(G1::zero().into_bytes().len(), 64);
+    assert_eq!(G2::zero().into_bytes().len(), 128);
 }

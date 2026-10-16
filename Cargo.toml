@@ -1,6 +1,6 @@
 [package]
 name = "rabe-bn"
-version = "0.4.23"
+version = "0.5.0"
 edition = "2024"
 authors = [
   "Sean Bowe <ewillbefull@gmail.com>",
@@ -29,6 +29,6 @@ serde = { version = "1.0", optional = true, default-features = false }
 serde_json = "1.0.151"
 
 # This previously hid cases of bugs, so it should be carefully considered and checked before
-# removal. See `add_nocarry_assert_fires_for_overflowing_operands` as to why
+# removal to ensure there is not silent overflow occurring
 [profile.release]
 debug-assertions = true
